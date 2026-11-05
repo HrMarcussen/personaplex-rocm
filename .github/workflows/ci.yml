@@ -25,6 +25,8 @@ jobs:
       - name: Byte-compile all sources
         run: python -m compileall -q moshi/moshi rocm docs/assets
       - name: Import and fall back cleanly without an AMD GPU
+        # outside the checkout, so `import moshi` resolves to the installed package
+        working-directory: ${{ runner.temp }}
         run: |
           python - <<'PY'
           import torch
@@ -36,7 +38,8 @@ jobs:
           assert torch.allclose(fast_linear(x, w), torch.nn.functional.linear(x, w))
           print("ok: moshi", moshi.__version__, "torch", torch.__version__)
           PY
-      - name: Streaming Mimi/transformer smoke test on CPU (random weights)
+      - name: Streaming attention smoke test on CPU (random weights)
+        working-directory: ${{ runner.temp }}
         run: |
           python - <<'PY'
           import torch
