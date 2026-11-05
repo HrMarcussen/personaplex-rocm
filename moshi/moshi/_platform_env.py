@@ -63,4 +63,23 @@ def save_tuning_results() -> None:
         pass
 
 
+
+def enable_high_res_timer() -> None:
+    """Windows: raise the system timer resolution to 1 ms for this process.
+
+    The realtime server polls with `asyncio.sleep(0.001)`; at Windows' default
+    ~15.6 ms timer resolution each poll really sleeps ~15 ms (measured), adding
+    up to ~30 ms of latency and jitter per audio frame. With 1 ms: ~2 ms.
+    Released automatically when the process exits.
+    """
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        ctypes.WinDLL("winmm").timeBeginPeriod(1)
+    except Exception:  # noqa: BLE001 - best effort only
+        pass
+
+
 configure()

@@ -13,6 +13,11 @@ kernels that make it comfortably faster than real time.
 | + TunableOp GEMM tuning, drop unused 2nd Mimi codec | ~64 ms | ~1.25x |
 | + custom GEMV, fused attention/RoPE/KV-cache, fused RMSNorm | 39 ms | 2.0x |
 | + whole-step graph capture of the Mimi codec | **32 ms** | **2.5x** |
+| optional: `PERSONAPLEX_INT8=1` (int8 weights for the 7B transformer) | 26 ms | 3.0x |
+
+With `PERSONAPLEX_INT8=1` the model needs ~10 GB of VRAM instead of ~18 GB (the big
+matrices are quantized while loading), so 16 GB cards such as the RX 7800 XT or
+RX 9070 XT should fit. It is opt-in until its quality has been compared on real weights.
 
 ## Requirements
 
@@ -69,6 +74,8 @@ Offline (wav in, wav out) works as upstream: `python -m moshi.offline ...`.
 | `kernels/gemv.hip` | Batch-1 bf16 GEMV kernels. Every projection in token-by-token decoding is a matrix-vector product; the stock BLAS kernels reach only 150–500 GB/s on several of Moshi's shapes, these reach ~850–885 GB/s (peak 960). Autotuned per shape against `F.linear`, so a shape only switches when it is faster. |
 | `kernels/fused.hip` | One kernel for RoPE + ring-KV-cache write, one split-K flash-decoding kernel with Moshi's exact ring-position/context masking (+ a combine kernel), and a fused fp32 RMSNorm. Each replaces 10–40 tiny PyTorch ops. |
 | `modules/streaming.py`, `utils/compile.py`, `models/compression.py` | Streaming conv state is updated in place when its shape is unchanged (same values, stable addresses), so a whole Mimi encode/decode step can be captured in one HIP graph (`StepGraph`). Codes are bit-identical to eager. |
+| `kernels/gemv.hip` (int8), `models/loaders.py` | Optional int8 weight-only quantization (per-row absmax) of the temporal transformer and text head, done while loading. |
+| `server.py` (Windows) | Requests 1 ms timer resolution: the server's audio loops poll with `asyncio.sleep(0.001)`, which really sleeps ~15 ms at Windows' default resolution (measured), adding up to ~30 ms of latency per frame. |
 
 The kernels are **header-free HIP** compiled device-only with
 `clang -x hip --cuda-device-only -nogpuinc -nogpulib`, loaded with
@@ -90,6 +97,8 @@ Switches: `PERSONAPLEX_KERNELS=0` (all custom kernels off), `PERSONAPLEX_FAST_GE
 | `test_mimi_graph.py` | Graphed vs eager Mimi on real audio (bit-identical codes). |
 | `bench_step.py --random` | Per-frame latency of the full pipeline (works without weights). |
 | `validate_offline.py` | Real weights: streams a wav through the model with kernels on and off and compares. |
+| `ws_client_test.py` | Headless client for the running server (same protocol as the web UI): streams a wav at real-time pace, reports lag/drift and the model's text. |
+| `test_int8.py` | int8 GEMV vs a dequantized reference. |
 | `split_lm.py`, `layer_breakdown.py` | Where the time goes (main transformer vs depformer, per-layer pieces). |
 
 ## Related

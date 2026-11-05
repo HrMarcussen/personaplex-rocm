@@ -9,7 +9,7 @@ ops, and reports:
 
 Works with the public Kyutai Moshiko weights (same architecture), so it does
 not need access to the gated PersonaPlex repo:
-    python rocm/validate_offline.py --hf-repo kyutai/moshiko-pytorch-bf16
+    python rocm/validate_offline.py --hf-repo kyutai/moshiko-pytorch-bf16 --voice-prompt ''
 """
 import argparse
 import os
@@ -24,6 +24,7 @@ from huggingface_hub import hf_hub_download
 
 from moshi.models import loaders
 from moshi.models.lm import LMGen, load_audio
+from moshi.offline import wrap_with_system_tags
 
 
 @torch.no_grad()
@@ -31,12 +32,25 @@ def run(args, mimi, lm, tok, pcm, kernels_on: bool):
     os.environ["PERSONAPLEX_KERNELS"] = "1" if kernels_on else "0"
     torch.manual_seed(args.seed)
     gen = LMGen(lm, device="cuda", sample_rate=mimi.sample_rate, frame_rate=mimi.frame_rate,
+                audio_silence_frame_cnt=int(0.5 * mimi.frame_rate),
                 use_sampling=not args.greedy, temp=0.8, temp_text=0.7, top_k=250, top_k_text=25)
     frame = int(mimi.sample_rate / mimi.frame_rate)
     mimi.streaming_forever(1)
     gen.streaming_forever(1)
+    if args.voice_prompt_path:
+        # Same prompt phase as the server: voice prompt, silence, role text, silence.
+        if args.voice_prompt_path.endswith(".pt"):
+            gen.load_voice_prompt_embeddings(args.voice_prompt_path)
+        else:
+            gen.load_voice_prompt(args.voice_prompt_path)
+        gen.text_prompt_tokens = tok.encode(wrap_with_system_tags(args.text_prompt)) if args.text_prompt else None
     mimi.reset_streaming()
     gen.reset_streaming()
+    if args.voice_prompt_path:
+        t_p = time.perf_counter()
+        gen.step_system_prompts(mimi)
+        mimi.reset_streaming()
+        print(f"[{'kernels' if kernels_on else 'pytorch'}] prompt phase took {time.perf_counter() - t_p:.2f}s")
     texts, tokens_all, out_pcm, times = [], [], [], []
     n = pcm.shape[-1] // frame
     for i in range(n):
@@ -70,7 +84,13 @@ def main():
     ap.add_argument("--seed", type=int, default=42424242)
     ap.add_argument("--greedy", action="store_true")
     ap.add_argument("--only-kernels", action="store_true")
+    ap.add_argument("--voice-prompt", default="NATF2.pt", help="PersonaPlex voice; '' to skip prompts (e.g. Moshiko)")
+    ap.add_argument("--text-prompt", default="You are a wise and friendly teacher. Answer questions or provide advice in a clear and engaging way.")
     args = ap.parse_args()
+    args.voice_prompt_path = None
+    if args.voice_prompt:
+        from moshi.offline import _get_voice_prompt_dir
+        args.voice_prompt_path = os.path.join(_get_voice_prompt_dir(None, args.hf_repo), args.voice_prompt)
 
     mimi = loaders.get_mimi(hf_hub_download(args.hf_repo, loaders.MIMI_NAME), "cuda")
     tok = sentencepiece.SentencePieceProcessor(hf_hub_download(args.hf_repo, loaders.TEXT_TOKENIZER_NAME))

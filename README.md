@@ -1,5 +1,10 @@
 # PersonaPlex: Voice and Role Control for Full Duplex Conversational Speech Models
 
+> **AMD Radeon on native Windows:** this fork runs PersonaPlex on an RX 7900 XTX under
+> Windows 11 with AMD's ROCm PyTorch wheels and custom HIP kernels, at 2.5x real time
+> (3x with optional int8). See **[ROCM_WINDOWS.md](ROCM_WINDOWS.md)** for install and
+> usage. The text below is NVIDIA's original README.
+
 [![Weights](https://img.shields.io/badge/🤗-Weights-yellow)](https://huggingface.co/nvidia/personaplex-7b-v1)
 [![Paper](https://img.shields.io/badge/📄-Paper-blue)](https://arxiv.org/abs/2602.06053)
 [![Demo](https://img.shields.io/badge/🎮-Demo-green)](https://research.nvidia.com/labs/adlr/personaplex/)
