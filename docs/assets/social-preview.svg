@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" font-family="Helvetica, Arial, sans-serif">
+<rect width="1280" height="640" fill="#0f1115"/>
+<rect x="40" y="40" width="1200" height="560" rx="28" fill="#171a20"/>
+<text x="96" y="138" font-size="30" fill="#8f8e88">PERSONAPLEX-7B · AMD RADEON · WINDOWS 11</text>
+<text x="96" y="232" font-size="68" font-weight="bold" fill="#f0efec">Real-time voice AI</text>
+<text x="96" y="310" font-size="68" font-weight="bold" fill="#f0efec">you can interrupt.</text>
+<text x="96" y="372" font-size="30" fill="#c3c2b7">Full-duplex speech-to-speech on an RX 7900 XTX.</text>
+<text x="96" y="414" font-size="30" fill="#c3c2b7">No CUDA, no WSL: ROCm + custom HIP kernels.</text>
+<text x="96" y="458" font-size="22" fill="#8f8e88">ms per 80 ms of speech (lower is better)</text>
+<rect x="346" y="480" width="538" height="22" rx="4" fill="#3a3f4a"/>
+<text x="96" y="498" font-size="22" fill="#c3c2b7">Upstream, eager</text>
+<text x="896" y="498" font-size="22" font-weight="bold" fill="#f0efec">211.5 ms</text>
+<rect x="346" y="514" width="83" height="22" rx="4" fill="#3987e5"/>
+<text x="96" y="532" font-size="22" fill="#c3c2b7">This port (bf16)</text>
+<text x="441" y="532" font-size="22" font-weight="bold" fill="#f0efec">32.5 ms</text>
+<rect x="346" y="548" width="61" height="22" rx="4" fill="#3987e5"/>
+<text x="96" y="566" font-size="22" fill="#c3c2b7">This port (int8)</text>
+<text x="419" y="566" font-size="22" font-weight="bold" fill="#f0efec">23.8 ms</text>
+<text x="1184" y="300" font-size="150" font-weight="bold" text-anchor="end" fill="#3987e5">2.5×</text>
+<text x="1184" y="352" font-size="30" text-anchor="end" fill="#c3c2b7">faster than real time</text>
+<text x="1184" y="560" font-size="26" text-anchor="end" fill="#8f8e88">github.com/HrMarcussen/personaplex-rocm</text>
+</svg>
