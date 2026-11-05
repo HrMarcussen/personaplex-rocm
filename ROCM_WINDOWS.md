@@ -13,6 +13,11 @@ kernels that make it comfortably faster than real time.
 | + TunableOp GEMM tuning, drop unused 2nd Mimi codec | ~64 ms | ~1.25x |
 | + custom GEMV, fused attention/RoPE/KV-cache, fused RMSNorm | 39 ms | 2.0x |
 | + whole-step graph capture of the Mimi codec | **32 ms** | **2.5x** |
+
+Measured on the real PersonaPlex weights (40 s test conversation, NATF2 voice): 32.5 ms
+mean / 34.9 ms worst frame (bf16), 23.8 ms (int8). A live websocket session streamed
+45 s of speech in real time with zero drift and a constant 0.215 s audio round trip
+(of which ~160 ms is inherent to the model's 80 ms frames + acoustic delay).
 | optional: `PERSONAPLEX_INT8=1` (int8 weights for the 7B transformer) | 26 ms | 3.0x |
 
 With `PERSONAPLEX_INT8=1` the model needs ~10 GB of VRAM instead of ~18 GB (the big
@@ -35,7 +40,7 @@ the clang that ships inside AMD's ROCm SDK wheel.
 ## Install
 
 ```powershell
-git clone -b rocm-windows <this repo> personaplex-rocm
+git clone https://github.com/HrMarcussen/personaplex-rocm.git
 cd personaplex-rocm
 powershell -ExecutionPolicy Bypass -File rocm\install.ps1
 ```
