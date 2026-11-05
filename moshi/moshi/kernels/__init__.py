@@ -40,7 +40,8 @@ logger = logging.getLogger(__name__)
 
 _DIR = Path(__file__).parent
 _SOURCES = {
-    "gemv": ["gemv_bf16_r1", "gemv_bf16_r2", "gemv_bf16_r4", "gemv_bf16_sk2", "gemv_bf16_sk4"],
+    "gemv": ["gemv_bf16_r1", "gemv_bf16_r2", "gemv_bf16_r4", "gemv_bf16_sk2", "gemv_bf16_sk4",
+             "gemv_i8_r1", "gemv_i8_r2", "gemv_i8_sk2", "gemv_i8_sk4"],
     "fused": ["rope_kv_write", "attn_decode_d128", "attn_decode_d64", "attn_combine", "rmsnorm_bf16"],
 }
 _GEMV_VARIANTS = {  # name -> rows per block (all use 256 threads)
@@ -50,6 +51,9 @@ _GEMV_VARIANTS = {  # name -> rows per block (all use 256 threads)
     "gemv_bf16_sk2": 2,
     "gemv_bf16_sk4": 4,
 }
+_I8_VARIANTS = {"gemv_i8_r1": 8, "gemv_i8_r2": 16, "gemv_i8_sk2": 2, "gemv_i8_sk4": 4}
+# id(Parameter) -> (int8 weight [N, K], fp32 scale [N], the Parameter itself)
+_QUANT: dict[int, tuple[torch.Tensor, torch.Tensor, torch.nn.Parameter]] = {}
 _ARCHS = ["gfx1100", "gfx1101", "gfx1102", "gfx1150", "gfx1151", "gfx1200", "gfx1201"]
 
 _lock = threading.Lock()
@@ -172,6 +176,38 @@ class _Kernels:
         self.launch(name, (grid, 1), 256, [_P(w.data_ptr()), _P(x.data_ptr()), _P(y.data_ptr()),
                                            ctypes.c_int(N), ctypes.c_int(K // 8)])
 
+    def gemv_i8(self, name: str, q: torch.Tensor, scale: torch.Tensor, x: torch.Tensor, y: torch.Tensor) -> None:
+        N, K = q.shape
+        grid = (N + _I8_VARIANTS[name] - 1) // _I8_VARIANTS[name]
+        self.launch(name, (grid, 1), 256, [_P(q.data_ptr()), _P(scale.data_ptr()), _P(x.data_ptr()),
+                                           _P(y.data_ptr()), ctypes.c_int(N), ctypes.c_int(K // 16)])
+
+    def pick_i8(self, q: torch.Tensor, scale: torch.Tensor) -> str:
+        N, K = q.shape
+        key = (N, K, q.device.index or 0, 8)
+        name = self.choice.get(key)
+        if name is not None:
+            return name
+        if torch.cuda.is_current_stream_capturing():
+            return "dequant"  # never benchmark inside graph capture
+        x = torch.randn(1, K, device=q.device, dtype=torch.bfloat16)
+        y = torch.empty(1, N, device=q.device, dtype=torch.bfloat16)
+        ref = F.linear(x.float(), q.float() * scale[:, None])
+        best, best_t = "dequant", float("inf")
+        for cand in _I8_VARIANTS:
+            self.gemv_i8(cand, q, scale, x, y)
+            err = (y.float() - ref).abs().max().item()
+            if err > 2e-2 * max(1.0, ref.abs().max().item()):
+                logger.warning("int8 gemv %s wrong for %sx%s (err %.3g), skipping", cand, N, K, err)
+                continue
+            dt = _time_in_graph(lambda c=cand: self.gemv_i8(c, q, scale, x, y))
+            if dt < best_t:
+                best, best_t = cand, dt
+        logger.info("int8 gemv %dx%d -> %s (%.1f us)", N, K, best, best_t * 1e6)
+        self.choice[key] = best
+        self._save()
+        return best
+
     def _save(self) -> None:
         try:
             self._tune_file.write_text(json.dumps({",".join(map(str, k)): v for k, v in self.choice.items()}))
@@ -265,6 +301,10 @@ def _tracing() -> bool:
 
 # --------------------------------------------------------------------- linear
 def fast_linear(x: torch.Tensor, w: torch.Tensor, b: torch.Tensor | None = None) -> torch.Tensor:
+    if _QUANT:
+        qe = _QUANT.get(id(w))
+        if qe is not None:
+            return _int8_linear(x, qe[0], qe[1], b)
     K = x.shape[-1]
     if (
         b is None
@@ -373,3 +413,64 @@ def attention_step(projected: torch.Tensor, cache: torch.Tensor, end_offset: tor
         k.launch("attn_combine", (H, 1), D, [_P(part_o.data_ptr()), _P(part_ml.data_ptr()),
                                              _P(out.data_ptr()), ctypes.c_int(S), ctypes.c_int(D)])
     return out
+
+
+# ----------------------------------------------------------------- int8 weights
+def _int8_linear(x: torch.Tensor, q: torch.Tensor, scale: torch.Tensor,
+                 b: torch.Tensor | None) -> torch.Tensor:
+    N, K = q.shape
+    k = _get()
+    if (k is not None and b is None and x.dtype == torch.bfloat16 and x.numel() == K
+            and K % 16 == 0 and not _tracing()):
+        xc = x.contiguous()
+        y = torch.empty(x.shape[:-1] + (N,), device=x.device, dtype=x.dtype)
+        name = k.pick_i8(q, scale)
+        if name != "dequant":
+            k.gemv_i8(name, q, scale, xc, y)
+            return y
+    # Generic (slow) path, e.g. several tokens at once: dequantize on the fly.
+    w = (q.to(torch.float32) * scale[:, None]).to(x.dtype)
+    return F.linear(x, w, b)
+
+
+@torch.no_grad()
+def quantize_int8_(params: list[torch.nn.Parameter]) -> int:
+    """Replace 2D bf16 weights by int8 + per-row scale (symmetric absmax).
+
+    The Parameter object stays (same identity, now an empty tensor on the same
+    device/dtype) so `fast_linear(x, param)` finds its quantized version.
+    Returns the number of bytes saved.
+    """
+    saved = 0
+    for p in params:
+        w = p.data
+        if w.dim() != 2 or w.shape[1] % 16 != 0 or id(p) in _QUANT:
+            continue
+        scale = (w.abs().amax(dim=1).float() / 127.0).clamp_min(1e-12)
+        q = torch.empty(w.shape, device=w.device, dtype=torch.int8)
+        for i in range(0, w.shape[0], 4096):  # chunked to bound temporary memory
+            q[i:i + 4096] = torch.round(w[i:i + 4096].float() / scale[i:i + 4096, None]).clamp_(-127, 127)
+        _QUANT[id(p)] = (q, scale, p)
+        saved += w.numel() * w.element_size() - q.numel() - scale.numel() * 4
+        p.data = torch.empty(0, device=w.device, dtype=w.dtype)
+    if saved:
+        torch.cuda.empty_cache()
+    return saved
+
+
+def quantize_lm_int8_(lm: torch.nn.Module) -> int:
+    """int8 weight-only quantization of the 7B temporal transformer + text head.
+
+    The depformer stays bf16 (its per-codebook weights are sliced views, and it
+    is latency- rather than bandwidth-bound anyway).
+    """
+    params: list[torch.nn.Parameter] = []
+    for layer in lm.transformer.layers:
+        attn = layer.self_attn
+        if not attn.weights_per_step:
+            params += [attn.in_proj_weight, attn.out_proj.weight]
+        gating = getattr(layer, "gating", None)
+        if gating is not None and hasattr(gating, "linear_in"):
+            params += [gating.linear_in.weight, gating.linear_out.weight]
+    params.append(lm.text_linear.weight)
+    return quantize_int8_(params)

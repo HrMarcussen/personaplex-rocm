@@ -463,8 +463,15 @@ def main():
     ssl_context = None
     if args.ssl is not None:
         ssl_context, protocol = create_ssl_context(args.ssl)
-    host_ip = args.host if args.host not in ("0.0.0.0", "::", "localhost") else get_lan_ip()
-    logger.info(f"Access the Web UI directly at {protocol}://{host_ip}:{args.port}")
+    if args.host in ("localhost", "127.0.0.1", "::1"):
+        # Browsers only grant microphone access on https or on localhost itself.
+        logger.info(f"Access the Web UI directly at {protocol}://localhost:{args.port}")
+    else:
+        host_ip = args.host if args.host not in ("0.0.0.0", "::") else get_lan_ip()
+        logger.info(f"Access the Web UI directly at {protocol}://{host_ip}:{args.port}")
+        if protocol == "http":
+            logger.warning("Browsers on other machines only allow microphone access over "
+                           "https: pass --ssl <dir with key.pem/cert.pem> for remote use.")
     if setup_tunnel is not None:
         tunnel = setup_tunnel('localhost', args.port, tunnel_token, None)
         logger.info(f"Tunnel started, if executing on a remote GPU, you can use {tunnel}.")

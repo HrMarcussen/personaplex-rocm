@@ -199,6 +199,7 @@ def get_moshi_lm(
     if filename is None:
         model.to(device=device, dtype=dtype)
         model.eval()
+        _maybe_quantize(model)
         return model
 
     filename = str(filename)
@@ -257,7 +258,24 @@ def get_moshi_lm(
     
     model.load_state_dict(state_dict, strict=False, assign=True)
     model.eval()
-    return model.to(device=device, dtype=dtype)
+    model = model.to(device=device, dtype=dtype)
+    _maybe_quantize(model)
+    return model
+
+
+def _maybe_quantize(model: LMModel) -> None:
+    """Optional int8 weight-only quantization (PERSONAPLEX_INT8=1, AMD kernels)."""
+    import os
+
+    if os.environ.get("PERSONAPLEX_INT8", "0").lower() in ("0", "", "false", "no", "off"):
+        return
+    from .. import kernels
+
+    if not kernels.available():
+        logger.warning("PERSONAPLEX_INT8 requested but custom kernels are unavailable; keeping bf16")
+        return
+    saved = kernels.quantize_lm_int8_(model)
+    logger.info(f"int8 weight-only quantization: saved {saved / 2**30:.1f} GiB of VRAM")
 
 
 def _get_moshi_lm_with_offload(
