@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 HrMarcussen
+// SPDX-License-Identifier: MIT
 // Fused single-token (T=1, B=1) streaming kernels for Moshi on RDNA3/RDNA4.
 //
 // Replaces chains of 20-40 tiny PyTorch ops (each >= ~5 us even inside a HIP

@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Python package (CPU fallback paths)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CPU PyTorch and the package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e moshi
+      - name: Byte-compile all sources
+        run: python -m compileall -q moshi/moshi rocm docs/assets
+      - name: Import and fall back cleanly without an AMD GPU
+        run: |
+          python - <<'PY'
+          import torch
+          import moshi
+          from moshi import kernels
+          from moshi.kernels import fast_linear
+          assert not kernels.available(), "custom kernels must stay off without ROCm"
+          x, w = torch.randn(1, 1, 64), torch.randn(32, 64)
+          assert torch.allclose(fast_linear(x, w), torch.nn.functional.linear(x, w))
+          print("ok: moshi", moshi.__version__, "torch", torch.__version__)
+          PY
+      - name: Streaming Mimi/transformer smoke test on CPU (random weights)
+        run: |
+          python - <<'PY'
+          import torch
+          from moshi.modules.transformer import StreamingMultiheadAttention
+          from moshi.modules.rope import RotaryEmbedding
+          mha = StreamingMultiheadAttention(64, 4, causal=True, context=8, rope=RotaryEmbedding(10000))
+          with torch.no_grad(), mha.streaming(1):
+              for _ in range(20):
+                  y = mha(*(torch.randn(1, 1, 64),) * 3)
+          assert y.shape == (1, 1, 64)
+          print("ok: streaming attention on CPU")
+          PY
+
+  powershell:
+    name: PowerShell scripts parse
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse rocm/*.ps1
+        shell: pwsh
+        run: |
+          $failed = $false
+          foreach ($f in Get-ChildItem rocm -Filter *.ps1) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) { $failed = $true; Write-Host "$($f.Name): $errors" } else { Write-Host "$($f.Name): ok" }
+          }
+          if ($failed) { exit 1 }

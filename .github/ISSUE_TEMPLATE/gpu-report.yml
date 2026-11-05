@@ -1,0 +1,42 @@
+name: Works on my GPU (benchmark report)
+description: Share results from a GPU or setup not yet listed in the compatibility table.
+labels: ["compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! Results from other Radeon cards help everyone. Run
+        `.\.venv\Scripts\python.exe rocm\bench_step.py --random` (no model download needed) and,
+        if you have the weights, `.\.venv\Scripts\python.exe rocm\validate_offline.py --only-kernels`.
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU
+      description: e.g. "Radeon RX 9070 XT 16 GB"
+    validations:
+      required: true
+  - type: input
+    id: setup
+    attributes:
+      label: OS and driver
+      description: e.g. "Windows 11 24H2, Adrenalin 26.2.2"
+    validations:
+      required: true
+  - type: dropdown
+    id: works
+    attributes:
+      label: Does a live conversation work?
+      options:
+        - Yes, smoothly
+        - Yes, with stutters
+        - Only with int8
+        - No
+    validations:
+      required: true
+  - type: textarea
+    id: results
+    attributes:
+      label: Benchmark output
+      render: text
+    validations:
+      required: true

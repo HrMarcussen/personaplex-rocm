@@ -1,3 +1,5 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 HrMarcussen
+// SPDX-License-Identifier: MIT
 // Batch-1 GEMV kernels for RDNA3/RDNA4 (wave32), used by moshi.kernels.fast_linear.
 //
 //   y[n] = sum_k W[n, k] * x[k]          W: bf16 [N, K] row-major (nn.Linear layout)

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 HrMarcussen
+# SPDX-License-Identifier: MIT
 """Profile GPU kernel time of one LM step (random 7B weights)."""
 import os
 import sys

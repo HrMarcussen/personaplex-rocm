@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 HrMarcussen
+# SPDX-License-Identifier: MIT
 """Graphed Mimi streaming encode/decode vs. eager, on real audio, plus timing."""
 import os
 import time

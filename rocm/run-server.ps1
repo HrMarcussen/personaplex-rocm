@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 HrMarcussen
+# SPDX-License-Identifier: MIT
 <#
 .SYNOPSIS
   Starts the PersonaPlex realtime voice server on an AMD GPU (Windows).

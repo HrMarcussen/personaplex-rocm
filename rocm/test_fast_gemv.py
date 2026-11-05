@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 HrMarcussen
+# SPDX-License-Identifier: MIT
 """Correctness + speed of the custom HIP GEMV vs F.linear for Moshi's shapes."""
 import logging
 import time

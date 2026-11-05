@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 HrMarcussen
+# SPDX-License-Identifier: MIT
 """Runtime defaults for AMD ROCm (and Windows) builds of PyTorch.
 
 Imported by ``moshi/__init__.py`` *before* torch, because several PyTorch

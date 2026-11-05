@@ -148,6 +148,9 @@ class ServerState:
             voice_prompt_filename = request.query["voice_prompt"]
             requested_voice_prompt_path = None
             if voice_prompt_filename is not None:
+                # Only plain file names inside the voices directory (no path traversal).
+                if os.path.basename(voice_prompt_filename) != voice_prompt_filename or voice_prompt_filename in ("", ".", ".."):
+                    raise FileNotFoundError(f"Invalid voice prompt name '{voice_prompt_filename}'")
                 requested_voice_prompt_path = os.path.join(self.voice_prompt_dir, voice_prompt_filename)
             # If the voice prompt file does not exist, find a valid (s0) voiceprompt file in the directory
             if requested_voice_prompt_path is None or not os.path.exists(requested_voice_prompt_path):
@@ -231,7 +234,10 @@ class ServerState:
                             _text = self.text_tokenizer.id_to_piece(text_token)  # type: ignore
                             _text = _text.replace("▁", " ")
                             msg = b"\x02" + bytes(_text, encoding="utf8")
-                            await ws.send_bytes(msg)
+                            try:
+                                await ws.send_bytes(msg)
+                            except ConnectionResetError:
+                                return
                         else:
                             text_token_map = ['EPAD', 'BOS', 'EOS', 'PAD']
 
@@ -242,7 +248,11 @@ class ServerState:
                 await asyncio.sleep(0.001)
                 msg = opus_writer.read_bytes()
                 if len(msg) > 0:
-                    await ws.send_bytes(b"\x01" + msg)
+                    try:
+                        await ws.send_bytes(b"\x01" + msg)
+                    except ConnectionResetError:
+                        # The client went away between frames: end the session quietly.
+                        return
 
         clog.log("info", "accepted connection")
         if len(request.query["text_prompt"]) > 0:
@@ -302,6 +312,14 @@ class ServerState:
         return ws
 
 
+def _safe_extractall(tar: tarfile.TarFile, path) -> None:
+    """tar.extractall with the 'data' filter (no absolute paths, links or devices) when available."""
+    try:
+        tar.extractall(path=path, filter="data")
+    except TypeError:  # Python without extraction filters
+        tar.extractall(path=path)
+
+
 def _get_voice_prompt_dir(voice_prompt_dir: Optional[str], hf_repo: str) -> Optional[str]:
     """
     If voice_prompt_dir is None:
@@ -323,7 +341,7 @@ def _get_voice_prompt_dir(voice_prompt_dir: Optional[str], hf_repo: str) -> Opti
     if not voices_dir.exists():
         logger.info(f"extracting {voices_tgz} to {voices_dir}")
         with tarfile.open(voices_tgz, "r:gz") as tar:
-            tar.extractall(path=voices_tgz.parent)
+            _safe_extractall(tar, voices_tgz.parent)
 
     if not voices_dir.exists():
         raise RuntimeError("voices.tgz did not contain a 'voices/' directory")
@@ -339,7 +357,7 @@ def _get_static_path(static: Optional[str]) -> Optional[str]:
         dist = dist_tgz.parent / "dist"
         if not dist.exists():
             with tarfile.open(dist_tgz, "r:gz") as tar:
-                tar.extractall(path=dist_tgz.parent)
+                _safe_extractall(tar, dist_tgz.parent)
         return str(dist)
     elif static != "none":
         # When set to the "none" string, we don't serve any static content.

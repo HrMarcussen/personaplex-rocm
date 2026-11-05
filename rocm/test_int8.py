@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 HrMarcussen
+# SPDX-License-Identifier: MIT
 """int8 weight-only GEMV vs a dequantized reference."""
 import moshi  # noqa: F401
 import torch

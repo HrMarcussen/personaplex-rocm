@@ -1,7 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 HrMarcussen
+# SPDX-License-Identifier: MIT
 """Per-frame latency benchmark for the PersonaPlex/Moshi streaming pipeline.
 
-Runs the exact per-frame work the realtime server does (2x Mimi encode,
-LM step incl. depformer, 2x Mimi decode) and reports timings. Realtime
+Runs the exact per-frame work the realtime server does (Mimi encode,
+LM step incl. depformer, Mimi decode) and reports timings. Realtime
 needs < 80 ms per frame (12.5 Hz).
 
 With --random it builds the 7B architecture with random weights, so it
@@ -25,7 +27,6 @@ def build(random_weights: bool, device: torch.device):
         loaders.load_model = lambda *a, **k: None
         try:
             mimi = loaders.get_mimi("random.safetensors", device)
-            other = loaders.get_mimi("random.safetensors", device)
         finally:
             loaders.load_model = orig
         lm = loaders.get_moshi_lm(None, device=device)
@@ -34,10 +35,9 @@ def build(random_weights: bool, device: torch.device):
         mimi_w = hf_hub_download(loaders.DEFAULT_REPO, loaders.MIMI_NAME)
         lm_w = hf_hub_download(loaders.DEFAULT_REPO, loaders.MOSHI_NAME)
         mimi = loaders.get_mimi(mimi_w, device)
-        other = loaders.get_mimi(mimi_w, device)
         lm = loaders.get_moshi_lm(lm_w, device=device)
     lm.eval()
-    return mimi, other, lm
+    return mimi, lm
 
 
 @torch.no_grad()
@@ -51,14 +51,13 @@ def main():
     print(f"torch {torch.__version__} hip={torch.version.hip} dev={torch.cuda.get_device_name(0)}")
     print(f"NO_CUDA_GRAPH={os.environ.get('NO_CUDA_GRAPH', '')!r} NO_TORCH_COMPILE={os.environ.get('NO_TORCH_COMPILE')!r}")
     t0 = time.time()
-    mimi, other, lm = build(args.random, device)
+    mimi, lm = build(args.random, device)
     print(f"loaded in {time.time() - t0:.1f}s, vram {torch.cuda.memory_allocated() / 2**30:.1f} GiB")
 
     frame = int(mimi.sample_rate / mimi.frame_rate)
     gen = LMGen(lm, device=device, sample_rate=mimi.sample_rate, frame_rate=mimi.frame_rate,
                 audio_silence_frame_cnt=int(0.5 * mimi.frame_rate))
     mimi.streaming_forever(1)
-    other.streaming_forever(1)
     gen.streaming_forever(1)
 
     times = {"enc": [], "lm": [], "dec": [], "total": []}

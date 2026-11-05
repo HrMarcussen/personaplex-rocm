@@ -22,4 +22,4 @@ RUN mkdir -p /app/ssl
 EXPOSE 8998
 
 ENTRYPOINT []
-CMD ["/app/moshi/.venv/bin/python", "-m", "moshi.server", "--ssl", "/app/ssl"]
+CMD ["/app/moshi/.venv/bin/python", "-m", "moshi.server", "--host", "0.0.0.0", "--ssl", "/app/ssl"]

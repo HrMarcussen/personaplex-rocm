@@ -1,181 +1,199 @@
-# PersonaPlex: Voice and Role Control for Full Duplex Conversational Speech Models
-
-> **AMD Radeon on native Windows:** this fork runs PersonaPlex on an RX 7900 XTX under
-> Windows 11 with AMD's ROCm PyTorch wheels and custom HIP kernels, at 2.5x real time
-> (3x with optional int8). See **[ROCM_WINDOWS.md](ROCM_WINDOWS.md)** for install and
-> usage. The text below is NVIDIA's original README.
-
-[![Weights](https://img.shields.io/badge/🤗-Weights-yellow)](https://huggingface.co/nvidia/personaplex-7b-v1)
-[![Paper](https://img.shields.io/badge/📄-Paper-blue)](https://arxiv.org/abs/2602.06053)
-[![Demo](https://img.shields.io/badge/🎮-Demo-green)](https://research.nvidia.com/labs/adlr/personaplex/)
-[![Discord](https://img.shields.io/badge/Discord-Join-purple?logo=discord)](https://discord.gg/5jAXrrbwRb)
-
-PersonaPlex is a real-time, full-duplex speech-to-speech conversational model that enables persona control through text-based role prompts and audio-based voice conditioning. Trained on a combination of synthetic and real conversations, it produces natural, low-latency spoken interactions with a consistent persona. PersonaPlex is based on the [Moshi](https://arxiv.org/abs/2410.00037) architecture and weights.
+<h1 align="center">PersonaPlex on AMD Radeon · native Windows</h1>
 
 <p align="center">
-  <img src="assets/architecture_diagram.png" alt="PersonaPlex Model Architecture">
-  <br>
-  <em>PersonaPlex Architecture</em>
+  <b>Real-time, full-duplex voice AI that you can interrupt mid-sentence.</b><br>
+  NVIDIA's <a href="https://github.com/NVIDIA/personaplex">PersonaPlex-7B</a> running on an AMD Radeon RX 7900 XTX under Windows 11.<br>
+  No CUDA, no WSL, no Visual Studio.
 </p>
 
-## Usage
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-2a78d6"></a>
+  <img alt="Windows 11" src="https://img.shields.io/badge/Windows-11-2a78d6">
+  <img alt="AMD Radeon RDNA3 / RDNA4" src="https://img.shields.io/badge/AMD_Radeon-RDNA3%20%2F%20RDNA4-ED1C24">
+  <img alt="ROCm 7.2.1" src="https://img.shields.io/badge/ROCm-7.2.1-ED1C24">
+  <img alt="Python 3.12" src="https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white">
+  <a href="https://github.com/HrMarcussen/personaplex-rocm/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/HrMarcussen/personaplex-rocm/actions/workflows/ci.yml/badge.svg"></a>
+</p>
 
-### Prerequisites
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/benchmark-dark.svg">
+    <img alt="Time per 80 ms audio frame on an RX 7900 XTX: upstream eager 211.5 ms (0.38x real time), with HIP graphs 87.9 ms, with GEMM tuning and codec fixes 57.7 ms, with custom HIP kernels 32.5 ms (2.46x real time), with optional int8 weights 23.8 ms (3.36x real time). Real time requires under 80 ms." src="docs/assets/benchmark-light.svg" width="820">
+  </picture>
+</p>
 
-Install the [Opus audio codec](https://github.com/xiph/opus) development library:
-```bash
-# Ubuntu/Debian
-sudo apt install libopus-dev
+PersonaPlex listens and speaks at the same time: NVIDIA reports it taking the turn in about 0.2 s,
+it backchannels ("mm-hm") while you talk, and it stops when you interrupt it. You give it a voice and
+a role in plain text. It was released for NVIDIA GPUs; on an AMD card under Windows its reference
+code ran at 0.38x real time, far too slow to talk to. This project makes it **2.5x faster than real
+time** on an RX 7900 XTX (3.4x with optional int8 weights) while keeping NVIDIA's reference code,
+model, and web UI.
 
-# Fedora/RHEL
-sudo dnf install opus-devel
-```
+## Highlights
 
-### Installation
+- **Real time with headroom:** 32.5 ms to produce each 80 ms of speech (bf16), 23.8 ms with int8.
+  A 45 s live session over the websocket kept pace with zero drift.
+- **The real thing, not a re-implementation:** NVIDIA's PyTorch code and web UI with a focused set
+  of patches. Every optimization is checked against the original code path (bit-identical audio
+  codec tokens, token-identical greedy decoding for the first 6.7 s of a conversation).
+- **Zero extra toolchain:** AMD's official PyTorch-on-Windows wheels. The custom GPU kernels are
+  compiled by the clang that ships inside AMD's ROCm SDK wheel and loaded through the HIP runtime,
+  so no MSVC, CUDA, or WSL is needed.
+- **Optional int8 weights:** ~13 GB of VRAM in use instead of ~18.4 GB, which should let 16 GB
+  Radeon cards run it (untested on such cards so far).
+- **Safe fallbacks:** the custom kernels and GEMM tuning only switch on with ROCm; if the kernels
+  cannot load, the stock PyTorch operations are used automatically.
 
-Download this repository and install with:
-```bash
-pip install moshi/.
-```
+## Quick start
 
-Extra step for Blackwell based GPUs as suggested in (See https://github.com/NVIDIA/personaplex/issues/2):
-```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
-```
+**You need:** Windows 11 · an AMD Radeon RX 7000 (RDNA3) or RX 9000 (RDNA4) GPU with ≥ 20 GB VRAM
+(16 GB cards: use int8, untested) · AMD Adrenalin driver 26.2.2 or newer · [Python 3.12](https://www.python.org/downloads/)
+(with the `py` launcher) · ~40 GB free disk · a free [Hugging Face](https://huggingface.co/join) account.
 
+1. **Accept the model license.** Log in to Hugging Face, open
+   [nvidia/personaplex-7b-v1](https://huggingface.co/nvidia/personaplex-7b-v1) and click
+   **Agree and access repository**.
+2. **Install** (downloads ~10 GB of ROCm + PyTorch wheels):
+   ```powershell
+   git clone https://github.com/HrMarcussen/personaplex-rocm.git
+   cd personaplex-rocm
+   powershell -ExecutionPolicy Bypass -File rocm\install.ps1
+   ```
+3. **Log in to Hugging Face once.** Create a *Read* token at
+   [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) and paste it when asked
+   (the input is hidden):
+   ```powershell
+   .\.venv\Scripts\huggingface-cli.exe login
+   ```
+4. **Start the server.** The first start downloads the 16.7 GB model and tunes GPU kernels for your
+   card (a few minutes); later starts take under a minute:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File rocm\run-server.ps1
+   ```
+5. **Talk.** Open **http://localhost:8998** in Chrome or Edge, allow the microphone, pick a voice and
+   a role, press *Connect*, and start talking. Interrupt it whenever you like.
 
-### Accept Model License
-Log in to your Huggingface account and accept the PersonaPlex model license [here](https://huggingface.co/nvidia/personaplex-7b-v1). <br>
-Then set up your Huggingface authentication:
-```bash
-export HF_TOKEN=<YOUR_HUGGINGFACE_TOKEN>
-```
+> [!TIP]
+> Use `localhost` exactly: browsers only grant microphone access on `localhost` or over https.
+> The browser's echo cancellation is on, but headphones give the cleanest interruptions.
 
-### Launch Server
+## Using it
 
-Launch server for live interaction (temporary SSL certs for https):
-```bash
-SSL_DIR=$(mktemp -d); python -m moshi.server --ssl "$SSL_DIR"
-```
+| | |
+|---|---|
+| **Voices** | 18 built-in voices: natural `NATF0-3` / `NATM0-3` and more varied `VARF0-4` / `VARM0-4` (F = female, M = male). |
+| **Roles** | Free text, e.g. `You enjoy having a good conversation.` or `You work for AeroRentals Pro and your name is Tomaz…`. See NVIDIA's [prompting guide](UPSTREAM_README.md#prompting-guide). |
+| **Language** | English. The model was trained on English conversations only. |
+| **int8 mode** | `$env:PERSONAPLEX_INT8 = "1"` before starting the server: faster, ~13 GB VRAM instead of ~18.4 GB. Compare the sound on your setup; it is opt-in. |
+| **Offline** | wav in, wav out: `.\.venv\Scripts\python.exe -m moshi.offline --voice-prompt NATF2.pt --input-wav in.wav --output-wav out.wav --output-text out.json` |
+| **Remote access** | `run-server.ps1 -HostName 0.0.0.0` plus `--ssl <dir with key.pem and cert.pem>`, because browsers need https for the mic on other machines. |
 
-**CPU Offload:** If your GPU has insufficient memory, use the `--cpu-offload` flag to offload model layers to CPU. This requires the `accelerate` package (`pip install accelerate`):
-```bash
-SSL_DIR=$(mktemp -d); python -m moshi.server --ssl "$SSL_DIR" --cpu-offload
-```
+## Performance
 
-Access the Web UI from a browser at `localhost:8998` if running locally, otherwise look for the access link printed by the script:
-```
-Access the Web UI directly at https://11.54.401.33:8998
-```
+Measured on an RX 7900 XTX (Windows 11, driver 32.0.32015, ROCm 7.2.1, PyTorch 2.9.1), time to
+produce one 80 ms audio frame:
 
-### Offline Evaluation
+| Configuration | Mean | Worst | vs. real time |
+|---|---:|---:|---:|
+| NVIDIA's code on ROCm PyTorch, eager ¹ | 211.5 ms | – | 0.38x |
+| + HIP graphs (upstream's CUDA-graph code works on ROCm) ¹ | 87.9 ms | – | 0.91x |
+| + TunableOp GEMM tuning, duplicate codec removed, codec graphs | 57.7 ms | 60.6 ms | 1.39x |
+| **+ custom HIP kernels (default)** | **32.5 ms** | **34.9 ms** | **2.46x** |
+| + int8 weights (`PERSONAPLEX_INT8=1`) | 23.8 ms | 24.7 ms | 3.36x |
 
-For offline evaluation use the offline script that streams in an input wav file and produces an output wav file from the captured output stream. The output file will be the same duration as the input file.
+¹ Measured with the same 7B architecture and random weights (identical compute); all other rows on
+the real PersonaPlex weights.
 
-Add `--cpu-offload` to any command below if your GPU has insufficient memory (requires `accelerate` package). Or install cpu-only PyTorch for offline evaluation on pure CPU.
+Over a real-time websocket session (`rocm/ws_client_test.py`, 45 s of speech) the server never fell
+behind (0 ms drift), with a constant 0.215 s audio round trip, of which ~160 ms is inherent to the
+model (80 ms frames plus one frame of acoustic delay). Rows 3-5 and the live session can be
+reproduced with the scripts in [`rocm/`](rocm/); rows 1-2 were measured on the unmodified upstream
+code during development (see [docs/TECHNICAL.md](docs/TECHNICAL.md)).
 
-**Assistant example:**
-```bash
-HF_TOKEN=<TOKEN> \
-python -m moshi.offline \
-  --voice-prompt "NATF2.pt" \
-  --input-wav "assets/test/input_assistant.wav" \
-  --seed 42424242 \
-  --output-wav "output.wav" \
-  --output-text "output.json"
-```
+## How it works
 
-**Service example:**
-```bash
-HF_TOKEN=<TOKEN> \
-python -m moshi.offline \
-  --voice-prompt "NATM1.pt" \
-  --text-prompt "$(cat assets/test/prompt_service.txt)" \
-  --input-wav "assets/test/input_service.wav" \
-  --seed 42424242 \
-  --output-wav "output.wav" \
-  --output-text "output.json"
-```
+Generating speech token by token is dominated by memory traffic: every 80 ms frame streams all
+~16 GB of weights through the GPU once, as thousands of small operations. On top of AMD's PyTorch
+wheels this project:
 
-## Voices
+1. **Graph-captures** each step with HIP graphs. That includes whole Mimi codec steps, whose
+   streaming state was made to update in place.
+2. **Tunes GEMMs** with PyTorch TunableOp and removes a second codec instance whose output was
+   always discarded.
+3. **Adds custom HIP kernels:** batch-1 GEMV that streams weights at ~850–885 GB/s (the stock
+   kernels reach 150–500 GB/s on these shapes), fused RoPE + ring KV-cache write + split-K decode
+   attention, fused RMSNorm, and optional int8 GEMV. Each kernel is autotuned per shape against
+   PyTorch and only used where it wins.
+4. **Fixes a Windows timing trap:** `asyncio.sleep(0.001)` really sleeps ~15 ms at Windows' default
+   timer resolution; the server now requests 1 ms.
 
-PersonaPlex supports a wide range of voices; we pre-package embeddings for voices that sound more natural and conversational (NAT) and others that are more varied (VAR). The fixed set of voices are labeled:
-```
-Natural(female): NATF0, NATF1, NATF2, NATF3
-Natural(male):   NATM0, NATM1, NATM2, NATM3
-Variety(female): VARF0, VARF1, VARF2, VARF3, VARF4
-Variety(male):   VARM0, VARM1, VARM2, VARM3, VARM4
-```
+The kernels are header-free HIP compiled device-only by the ROCm SDK's bundled clang, loaded with
+`hipModuleLoadData` and launched through `hipModuleLaunchKernel` on PyTorch's stream, so graph
+capture records them like any other kernel. Details, design notes, and validation in
+**[docs/TECHNICAL.md](docs/TECHNICAL.md)**.
 
-## Prompting Guide
+## Compatibility
 
-The model is trained on synthetic conversations for a fixed assistant role and varying customer service roles.
+| | Status |
+|---|---|
+| RX 7900 XTX (gfx1100), Windows 11 | ✅ tested |
+| Other RDNA3 / RDNA4 cards (gfx1100–1102, gfx1150/1151, gfx1200/1201) | 🟡 kernels are built for them; untested |
+| 16 GB cards with `PERSONAPLEX_INT8=1` | 🟡 should fit (13.0 GB measured in use); untested |
+| Linux with ROCm | 🟡 code paths are cross-platform; untested |
+| NVIDIA GPUs | ➡️ use [NVIDIA/personaplex](https://github.com/NVIDIA/personaplex); the custom kernels here are AMD-only |
 
-### Assistant Role
+Reports for other cards are very welcome: please open an issue with your numbers from
+`rocm\bench_step.py --random`.
 
-The assistant role has the prompt:
-```
-You are a wise and friendly teacher. Answer questions or provide advice in a clear and engaging way.
-```
+## FAQ
 
-Use this prompt for the QA assistant focused "User Interruption" evaluation category in [FullDuplexBench](https://arxiv.org/abs/2503.04721).
+<details>
+<summary><b>Can it speak Danish, German, …?</b></summary>
 
-### Customer Service Roles
+No. PersonaPlex was trained on English conversations only. Supporting another language would need
+fine-tuning on (largely synthetic) two-speaker dialogue in that language.
+</details>
 
-The customer service roles support a variety of prompts. Here are some examples for prompting style reference:
-```
-You work for CitySan Services which is a waste management and your name is Ayelen Lucero. Information: Verify customer name Omar Torres. Current schedule: every other week. Upcoming pickup: April 12th. Compost bin service available for $8/month add-on.
-```
-```
-You work for Jerusalem Shakshuka which is a restaurant and your name is Owen Foster. Information: There are two shakshuka options: Classic (poached eggs, $9.50) and Spicy (scrambled eggs with jalapenos, $10.25). Sides include warm pita ($2.50) and Israeli salad ($3). No combo offers. Available for drive-through until 9 PM.
-```
-```
-You work for AeroRentals Pro which is a drone rental company and your name is Tomaz Novak. Information: AeroRentals Pro has the following availability: PhoenixDrone X ($65/4 hours, $110/8 hours), and the premium SpectraDrone 9 ($95/4 hours, $160/8 hours). Deposit required: $150 for standard models, $300 for premium.
-```
+<details>
+<summary><b>Could I run this in LM Studio / llama.cpp / Ollama?</b></summary>
 
-### Casual Conversations
+No. Those run text LLMs. PersonaPlex is a speech-to-speech model with an audio codec, a second
+"depth" transformer that emits 16 audio tokens per step, and a live two-way audio protocol.
+</details>
 
-The model is also trained on real conversations from the [Fisher English Corpus](https://catalog.ldc.upenn.edu/LDC2004T19) with LLM-labeled prompts for open-ended conversations. Here are some example prompts for casual conversations:
-```
-You enjoy having a good conversation.
-```
-```
-You enjoy having a good conversation. Have a casual discussion about eating at home versus dining out.
-```
-```
-You enjoy having a good conversation. Have an empathetic discussion about the meaning of family amid uncertainty.
-```
-```
-You enjoy having a good conversation. Have a reflective conversation about career changes and feeling of home. You have lived in California for 21 years and consider San Francisco your home. You work as a teacher and have traveled a lot. You dislike meetings.
-```
-```
-You enjoy having a good conversation. Have a casual conversation about favorite foods and cooking experiences. You are David Green, a former baker now living in Boston. You enjoy cooking diverse international dishes and appreciate many ethnic restaurants.
-```
+<details>
+<summary><b>"custom HIP kernels unavailable" in the log?</b></summary>
 
-Use the prompt `You enjoy having a good conversation.` for the "Pause Handling", "Backchannel" and "Smooth Turn Taking" evaluation categories of FullDuplexBench.
+The server falls back to stock PyTorch (~58 ms per frame, still real time on an RX 7900 XTX).
+Check that the ROCm SDK wheels installed correctly (`rocm\install.ps1`), and include the message in
+an issue. `PERSONAPLEX_KERNELS=0` forces the fallback.
+</details>
 
-## Generalization
+<details>
+<summary><b>The browser shows no microphone prompt.</b></summary>
 
-Personaplex finetunes Moshi and benefits from the generalization capabilities of the underlying [Helium](https://kyutai.org/blog/2025-04-30-helium) LLM. Thanks to the broad training corpus of the backbone, we find that the model will respond plausibly to out-of-distribution prompts and lead to unexpected or fun conversations. We encourage experimentation with different prompts to test the model's emergent ability to handle scenarios outside its training distribution. As an inspiration we feature the following astronaut prompt in the WebUI:
-```
-You enjoy having a good conversation. Have a technical discussion about fixing a reactor core on a spaceship to Mars. You are an astronaut on a Mars mission. Your name is Alex. You are already dealing with a reactor core meltdown on a Mars mission. Several ship systems are failing, and continued instability will lead to catastrophic failure. You explain what is happening and you urgently ask for help thinking through how to stabilize the reactor.
-```
+Open `http://localhost:8998` (not your LAN IP), in Chrome or Edge, and check Windows' microphone
+privacy settings for the browser.
+</details>
 
-## License
+<details>
+<summary><b>Does this need the model weights from this repo?</b></summary>
 
-The present code is provided under the MIT license. The weights for the models are released under the NVIDIA Open Model license.
+No weights are included. They are downloaded from Hugging Face under the NVIDIA Open Model License
+after you accept it.
+</details>
 
-## Citation
+## Credits and license
 
-If you use PersonaPlex in your research, please cite our paper:
-```bibtex
-@misc{roy2026personaplexvoicerolecontrol,
-      title={PersonaPlex: Voice and Role Control for Full Duplex Conversational Speech Models}, 
-      author={Rajarshi Roy and Jonathan Raiman and Sang-gil Lee and Teodor-Dumitru Ene and Robert Kirby and Sungwon Kim and Jaehyeon Kim and Bryan Catanzaro},
-      year={2026},
-      eprint={2602.06053},
-      archivePrefix={arXiv},
-      primaryClass={cs.CL},
-      url={https://arxiv.org/abs/2602.06053}, 
-}
-```
+- [**PersonaPlex**](https://github.com/NVIDIA/personaplex) by NVIDIA: code under MIT; model weights under
+  the [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/)
+  (not included here).
+- [**Moshi**](https://github.com/kyutai-labs/moshi) by Kyutai and **Audiocraft** by Meta, which PersonaPlex
+  builds on (MIT).
+- AMD's [ROCm PyTorch wheels for Windows](https://rocm.docs.amd.com/projects/radeon-ryzen/en/latest/).
+- Related: [gain774/moshi-rocm](https://github.com/gain774/moshi-rocm), a HIP build of the C++
+  `moshi.cpp` engine for Linux.
+
+This port is released under the [MIT License](LICENSE); see [NOTICE.md](NOTICE.md) for third-party
+notices. It is an independent community project and is **not affiliated with, endorsed by, or
+supported by NVIDIA or AMD**. NVIDIA's original README is in [UPSTREAM_README.md](UPSTREAM_README.md).

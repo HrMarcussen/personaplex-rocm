@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 HrMarcussen
+# SPDX-License-Identifier: MIT
 """Custom HIP kernels for AMD GPUs, loaded without a host C++ compiler.
 
 Entry points (all fall back to plain PyTorch when unavailable):
@@ -186,7 +188,7 @@ class _Kernels:
         N, K = q.shape
         key = (N, K, q.device.index or 0, 8)
         name = self.choice.get(key)
-        if name is not None:
+        if name is not None and (name == "dequant" or name in self.funcs):
             return name
         if torch.cuda.is_current_stream_capturing():
             return "dequant"  # never benchmark inside graph capture
@@ -218,7 +220,7 @@ class _Kernels:
         N, K = w.shape
         key = (N, K, w.device.index or 0)
         name = self.choice.get(key)
-        if name is not None:
+        if name is not None and (name == "torch" or name in self.funcs):
             return name
         if torch.cuda.is_current_stream_capturing():
             return "torch"  # never benchmark inside graph capture
@@ -308,6 +310,7 @@ def fast_linear(x: torch.Tensor, w: torch.Tensor, b: torch.Tensor | None = None)
     K = x.shape[-1]
     if (
         b is None
+        and not _tracing()
         and x.is_cuda
         and x.dtype == torch.bfloat16
         and w.dtype == torch.bfloat16
@@ -317,7 +320,6 @@ def fast_linear(x: torch.Tensor, w: torch.Tensor, b: torch.Tensor | None = None)
         and x.numel() == K
         and w.is_contiguous()
         and w.data_ptr() % 16 == 0
-        and not _tracing()
         and _env_on("PERSONAPLEX_FAST_GEMV")
     ):
         k = _get()
@@ -425,7 +427,7 @@ def _int8_linear(x: torch.Tensor, q: torch.Tensor, scale: torch.Tensor,
         xc = x.contiguous()
         y = torch.empty(x.shape[:-1] + (N,), device=x.device, dtype=x.dtype)
         name = k.pick_i8(q, scale)
-        if name != "dequant":
+        if name != "dequant" and xc.data_ptr() % 16 == 0:
             k.gemv_i8(name, q, scale, xc, y)
             return y
     # Generic (slow) path, e.g. several tokens at once: dequantize on the fly.

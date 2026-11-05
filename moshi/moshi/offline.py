@@ -139,7 +139,10 @@ def _get_voice_prompt_dir(voice_prompt_dir: Optional[str], hf_repo: str) -> Opti
     if not voices_dir.exists():
         log("info", f"extracting {voices_tgz} to {voices_dir}")
         with tarfile.open(voices_tgz, "r:gz") as tar:
-            tar.extractall(path=voices_tgz.parent)
+            try:
+                tar.extractall(path=voices_tgz.parent, filter="data")
+            except TypeError:  # Python without extraction filters
+                tar.extractall(path=voices_tgz.parent)
 
     if not voices_dir.exists():
         raise RuntimeError("voices.tgz did not contain a 'voices/' directory")

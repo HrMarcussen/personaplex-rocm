@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 HrMarcussen
+# SPDX-License-Identifier: MIT
 """Fused HIP attention / RMSNorm vs. the original PyTorch path."""
 import os
 

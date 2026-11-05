@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 HrMarcussen
+# SPDX-License-Identifier: MIT
 """Graph-captured timing of the pieces of one main-transformer layer (random weights).
 
 Kineto/roctracer are not available in the Windows ROCm build, so instead of a

@@ -47,7 +47,12 @@ from ..utils.compile import CUDAGraphed
 
 
 def _lin(mod: torch.nn.Linear, x: torch.Tensor) -> torch.Tensor:
-    return fast_linear(x, mod.weight, mod.bias)
+    w = mod.weight
+    # Modules dispatched by accelerate (--cpu-offload) load their weights in a
+    # forward pre-hook: call the module itself so the hook runs.
+    if hasattr(mod, "_hf_hook") or w.device != x.device:
+        return mod(x)
+    return fast_linear(x, w, mod.bias)
 from ..modules.streaming import StreamingStateDict, StreamingContainer, StreamingModule, load_streaming_state
 from ..modules.transformer import (
     StreamingTransformer,

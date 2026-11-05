@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 HrMarcussen
+# SPDX-License-Identifier: MIT
 """Kernel-level GPU time of one LM step (random 7B weights, eager)."""
 import os
 os.environ["NO_CUDA_GRAPH"] = "1"

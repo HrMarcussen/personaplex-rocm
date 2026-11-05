@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="384" viewBox="0 0 880 384" role="img" aria-labelledby="title desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+<title id="title">PersonaPlex on RX 7900 XTX: time per 80 ms audio frame</title>
+<desc id="desc">Lower is better; real time requires under 80 ms. Upstream code, eager PyTorch: 211.5 ms (0.38x real time); + HIP graphs: 87.9 ms (0.91x real time); + GEMM tuning, codec fixes: 57.7 ms (1.39x real time); + custom HIP kernels (bf16): 32.5 ms (2.46x real time); + int8 weights (optional): 23.8 ms (3.36x real time).</desc>
+<rect x="0.5" y="0.5" width="879" height="383" rx="12" fill="#1a1a19" stroke="#2e2e2c"/>
+<text x="28" y="40" font-size="19" font-weight="600" fill="#f0efec">Time to generate one 80 ms audio frame</text>
+<text x="28" y="64" font-size="13.5" fill="#c3c2b7">AMD Radeon RX 7900 XTX, native Windows 11 · lower is better · real time needs &lt; 80 ms</text>
+<line x1="248.0" y1="110" x2="248.0" y2="320" stroke="#2b2b29" stroke-width="1"/>
+<text x="248.0" y="338" font-size="11.5" text-anchor="middle" fill="#8f8e88">0</text>
+<line x1="346.2" y1="110" x2="346.2" y2="320" stroke="#2b2b29" stroke-width="1"/>
+<text x="346.2" y="338" font-size="11.5" text-anchor="middle" fill="#8f8e88">50</text>
+<line x1="444.4" y1="110" x2="444.4" y2="320" stroke="#2b2b29" stroke-width="1"/>
+<text x="444.4" y="338" font-size="11.5" text-anchor="middle" fill="#8f8e88">100</text>
+<line x1="542.5" y1="110" x2="542.5" y2="320" stroke="#2b2b29" stroke-width="1"/>
+<text x="542.5" y="338" font-size="11.5" text-anchor="middle" fill="#8f8e88">150</text>
+<line x1="640.7" y1="110" x2="640.7" y2="320" stroke="#2b2b29" stroke-width="1"/>
+<text x="640.7" y="338" font-size="11.5" text-anchor="middle" fill="#8f8e88">200</text>
+<text x="680.0" y="338" font-size="11.5" text-anchor="end" fill="#8f8e88">ms</text>
+<text x="234" y="131.5" font-size="13.5" text-anchor="end" font-weight="400" fill="#f0efec">Upstream code, eager PyTorch</text>
+<path d="M248.0,116.0 H659.3 Q663.3,116.0 663.3,120.0 V134.0 Q663.3,138.0 659.3,138.0 H248.0 Z" fill="#3987e5"/>
+<text x="234" y="175.5" font-size="13.5" text-anchor="end" font-weight="400" fill="#f0efec">+ HIP graphs</text>
+<path d="M248.0,160.0 H416.6 Q420.6,160.0 420.6,164.0 V178.0 Q420.6,182.0 416.6,182.0 H248.0 Z" fill="#3987e5"/>
+<text x="234" y="219.5" font-size="13.5" text-anchor="end" font-weight="400" fill="#f0efec">+ GEMM tuning, codec fixes</text>
+<path d="M248.0,204.0 H357.3 Q361.3,204.0 361.3,208.0 V222.0 Q361.3,226.0 357.3,226.0 H248.0 Z" fill="#3987e5"/>
+<text x="234" y="263.5" font-size="13.5" text-anchor="end" font-weight="600" fill="#f0efec">+ custom HIP kernels (bf16)</text>
+<path d="M248.0,248.0 H307.8 Q311.8,248.0 311.8,252.0 V266.0 Q311.8,270.0 307.8,270.0 H248.0 Z" fill="#3987e5"/>
+<text x="234" y="307.5" font-size="13.5" text-anchor="end" font-weight="600" fill="#f0efec">+ int8 weights (optional)</text>
+<path d="M248.0,292.0 H290.7 Q294.7,292.0 294.7,296.0 V310.0 Q294.7,314.0 290.7,314.0 H248.0 Z" fill="#3987e5"/>
+<line x1="405.1" y1="100" x2="405.1" y2="320" stroke="#c3c2b7" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="405.0909090909091" y="94" font-size="12" text-anchor="middle" fill="#c3c2b7">real-time budget: 80 ms</text>
+<text x="673.3" y="131.5" font-size="13.5" fill="#1a1a19" stroke="#1a1a19" stroke-width="5" stroke-linejoin="round"><tspan font-weight="600">211.5 ms</tspan><tspan> · 0.38× real time</tspan></text>
+<text x="673.3" y="131.5" font-size="13.5" fill="#f0efec"><tspan font-weight="600">211.5 ms</tspan><tspan fill="#c3c2b7"> · 0.38× real time</tspan></text>
+<text x="430.6" y="175.5" font-size="13.5" fill="#1a1a19" stroke="#1a1a19" stroke-width="5" stroke-linejoin="round"><tspan font-weight="600">87.9 ms</tspan><tspan> · 0.91× real time</tspan></text>
+<text x="430.6" y="175.5" font-size="13.5" fill="#f0efec"><tspan font-weight="600">87.9 ms</tspan><tspan fill="#c3c2b7"> · 0.91× real time</tspan></text>
+<text x="371.3" y="219.5" font-size="13.5" fill="#1a1a19" stroke="#1a1a19" stroke-width="5" stroke-linejoin="round"><tspan font-weight="600">57.7 ms</tspan><tspan> · 1.39× real time</tspan></text>
+<text x="371.3" y="219.5" font-size="13.5" fill="#f0efec"><tspan font-weight="600">57.7 ms</tspan><tspan fill="#c3c2b7"> · 1.39× real time</tspan></text>
+<text x="321.8" y="263.5" font-size="13.5" fill="#1a1a19" stroke="#1a1a19" stroke-width="5" stroke-linejoin="round"><tspan font-weight="600">32.5 ms</tspan><tspan> · 2.46× real time</tspan></text>
+<text x="321.8" y="263.5" font-size="13.5" fill="#f0efec"><tspan font-weight="600">32.5 ms</tspan><tspan fill="#c3c2b7"> · 2.46× real time</tspan></text>
+<text x="304.7" y="307.5" font-size="13.5" fill="#1a1a19" stroke="#1a1a19" stroke-width="5" stroke-linejoin="round"><tspan font-weight="600">23.8 ms</tspan><tspan> · 3.36× real time</tspan></text>
+<text x="304.7" y="307.5" font-size="13.5" fill="#f0efec"><tspan font-weight="600">23.8 ms</tspan><tspan fill="#c3c2b7"> · 3.36× real time</tspan></text>
+<text x="28" y="366" font-size="11.5" fill="#8f8e88">First two rows: 7B architecture with random weights (identical compute). Others: real PersonaPlex weights, rocm/validate_offline.py.</text>
+</svg>

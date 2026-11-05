@@ -1,79 +1,66 @@
-name: Bug Report
-description: You found a bug.
-labels: ["bug", "triage"]
+name: Bug report
+description: Something does not work or is slower than expected on your AMD GPU.
+labels: ["bug"]
 body:
-  - type: dropdown
-    id: backend
+  - type: markdown
     attributes:
-      label: Backend impacted
-      description: Which backend is concerned with your bug report?
-      options:
-        - The PyTorch implementation
-        - The MLX implementation
-        - The Rust implementation
-        - Other / All
-      default: 0
+      value: |
+        Thanks for reporting! Please check the [FAQ](https://github.com/HrMarcussen/personaplex-rocm#faq) first.
+        Issues with the model itself (what it says, languages, voices) belong upstream at
+        [NVIDIA/personaplex](https://github.com/NVIDIA/personaplex).
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU
+      description: Model and VRAM, e.g. "Radeon RX 7900 XTX 24 GB".
+    validations:
+      required: true
+  - type: input
+    id: driver
+    attributes:
+      label: AMD driver version
+      description: Adrenalin version, or the DriverVersion from `Get-CimInstance Win32_VideoController`.
     validations:
       required: true
   - type: dropdown
     id: os
     attributes:
       label: Operating system
-      description: What is your operating system?
       options:
+        - Windows 11
+        - Windows 10
         - Linux
-        - Mac OS X
-        - Windows (unsupported)
-      default: 0
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `.\.venv\Scripts\python.exe -c "import torch, moshi; from moshi import kernels; print(torch.__version__, torch.version.hip, torch.cuda.get_device_name(0), kernels.available())"`
+      render: text
     validations:
       required: true
   - type: dropdown
-    id: hardware
+    id: mode
     attributes:
-      label: Hardware
-      description: What hardware are you using?
+      label: Mode
       options:
-        - CPU
-        - GPU with CUDA
-        - Metal with MLX
-      default: 0
+        - Default (bf16)
+        - int8 (PERSONAPLEX_INT8=1)
+        - Custom kernels off (PERSONAPLEX_KERNELS=0)
     validations:
       required: true
   - type: textarea
     id: description
     attributes:
-      label: Description
-      description: Provide a detailed description of your bug.
-      placeholder: 
-      value: 
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
     validations:
       required: true
   - type: textarea
-    id: more_info
+    id: logs
     attributes:
-      label: Extra information
-      description: Please provide any other relevant information, such as log extracts, code etc.
-      placeholder: 
-      value: 
-    validations:
-      required: true
-  - type: textarea
-    id: env
-    attributes:
-      label: Environment
-      description: Please provide any other relevant information, such as log extracts, code etc.
-      placeholder: 
-      value: |
-          Fill in the following information on your system.
-          - Operating system version:
-
-          If the backend impacted is PyTorch:
-          - Python version:
-          - PyTorch version:
-          - CUDA version (run `python -c 'import torch;  print(torch.version.cuda)'`):
-          - GPU model and memory:
-            
-          If the backend is MLX:
-          - Mac model:
-    validations:
-      required: true
+      label: Logs / benchmark output
+      description: Server log or the output of `.\.venv\Scripts\python.exe rocm\bench_step.py --random`. Remove anything private (tokens, user names in paths) before posting.
+      render: text

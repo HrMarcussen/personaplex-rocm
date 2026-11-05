@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 HrMarcussen
+# SPDX-License-Identifier: MIT
 """Compare batch-1 matmul strategies on ROCm for the shapes Moshi uses."""
 import time
 import torch

@@ -308,6 +308,15 @@ def cuda_graph(func: tp.Callable, warmup_steps: int = 1):
     return CUDAGraphed(func, warmup_steps)
 
 
+_state_reallocs = 0
+
+
+def note_state_realloc() -> None:
+    """Called when streaming state gets a new tensor (shape change); see StepGraph."""
+    global _state_reallocs
+    _state_reallocs += 1
+
+
 class StepGraph:
     """Graph-capture a single-tensor streaming step once its input shape is stable.
 
@@ -318,7 +327,8 @@ class StepGraph:
     goes back to eager warmup. Requires the wrapped step to update its
     streaming state in place in steady state (see `_assign_state`).
     Returns a fresh clone of the output on each call, so callers never alias
-    the graph's static output buffer.
+    the graph's static output buffer. Capture only happens after an eager call
+    that reallocated no streaming state, i.e. once the state is provably steady.
     """
 
     def __init__(self, func: tp.Callable, warmup: int = 2, disable: bool = False):
@@ -333,6 +343,7 @@ class StepGraph:
         self._count = 0
         self._input: torch.Tensor | None = None
         self._output: torch.Tensor | None = None
+        self._steady = False
 
     def __call__(self, x: torch.Tensor) -> torch.Tensor:
         if self.disable or not _is_cuda_graph_enabled() or in_cuda_graph():
@@ -349,8 +360,11 @@ class StepGraph:
             self._key = key
             self._count = 0
         self._count += 1
-        if self._count <= self.warmup:
-            return self.func(x)
+        if self._count <= self.warmup or not self._steady:
+            before = _state_reallocs
+            out = self.func(x)
+            self._steady = _state_reallocs == before
+            return out
         self._input = x.clone()
         graph = cuda.CUDAGraph()
         with _set_in_cuda_graph():

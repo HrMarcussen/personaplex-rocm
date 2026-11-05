@@ -42,6 +42,8 @@ import json
 from typing import List, Union, Protocol, TypeVar, Generic, Any, Optional
 import torch
 import typing as tp
+
+from ..utils.compile import note_state_realloc
 from safetensors.torch import save_file, load_file
 
 
@@ -449,7 +451,10 @@ def _assign_state(state: tp.Any, name: str, value: torch.Tensor) -> None:
     ):
         cur.copy_(value)
     else:
-        setattr(state, name, value)
+        # Own the storage (the value may be a view of a caller's tensor, which later
+        # in-place updates must never write into) and note that state was reallocated.
+        setattr(state, name, value.clone())
+        note_state_realloc()
 
 
 @dataclass

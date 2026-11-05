@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 HrMarcussen
+# SPDX-License-Identifier: MIT
 """Time graphed main transformer vs. depformer inside LMGen.step (random weights)."""
 import os
 import time

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 HrMarcussen
+# SPDX-License-Identifier: MIT
 """Headless end-to-end test of the realtime server, speaking the web client's protocol.
 
 Streams a wav file to ws://HOST/api/chat as Opus at real-time pace (like a
@@ -148,8 +150,8 @@ def report_turn_taking(inp: np.ndarray, out: np.ndarray, recv_times, t0: float) 
         print(f"turn-taking: {len(lat)} user turn ends; model starts speaking after "
               f"median {np.median(lat):.2f}s (model timeline, 80 ms resolution)")
         print(f"  + pipeline delay on this PC (median, audio sent -> audio back): {pipe * 1000:.0f} ms")
-        print(f"  => perceived response latency ~ {np.median(lat) + pipe:.2f}s "
-              f"(NVIDIA's chart: 0.17s smooth turn-taking)")
+        print(f"  => perceived response latency ~ {np.median(lat) + pipe:.2f}s (rough: simple loudness "
+              f"detector, one recording; not comparable to NVIDIA's FullDuplexBench numbers)")
     else:
         print(f"turn-taking: no clean user-turn ends found; pipeline delay {pipe * 1000:.0f} ms")
 

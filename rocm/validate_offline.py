@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 HrMarcussen
+# SPDX-License-Identifier: MIT
 """End-to-end numerical validation on real weights.
 
 Streams a wav through Mimi + the LM exactly like the server (frame by frame,

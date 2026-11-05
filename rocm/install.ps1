@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 HrMarcussen
+# SPDX-License-Identifier: MIT
 <#
 .SYNOPSIS
   Installs PersonaPlex for AMD Radeon on native Windows (ROCm 7.2.1 PyTorch wheels).
