@@ -10,6 +10,7 @@ The code has been adapted from Audiocraft, see LICENSE.audiocraft
 """
 
 # flake8: noqa
+from . import _platform_env  # must run before torch is imported
 from . import utils
 from . import modules
 from . import models

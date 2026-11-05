@@ -42,7 +42,12 @@ import torch
 from tqdm.auto import tqdm
 
 from ..utils.sampling import sample_token
+from ..kernels import fast_linear
 from ..utils.compile import CUDAGraphed
+
+
+def _lin(mod: torch.nn.Linear, x: torch.Tensor) -> torch.Tensor:
+    return fast_linear(x, mod.weight, mod.bias)
 from ..modules.streaming import StreamingStateDict, StreamingContainer, StreamingModule, load_streaming_state
 from ..modules.transformer import (
     StreamingTransformer,
@@ -450,7 +455,7 @@ class LMModel(StreamingContainer):
         if self.out_norm:
             transformer_out = self.out_norm(transformer_out)
         assert isinstance(transformer_out, torch.Tensor)
-        text_logits = self.text_linear(transformer_out)
+        text_logits = _lin(self.text_linear, transformer_out)
         text_logits = text_logits[:, None]
         return transformer_out, text_logits
 
@@ -473,9 +478,9 @@ class LMModel(StreamingContainer):
         last_token_input: Optional[torch.Tensor] = None
         depformer_input = transformer_out
         if self.depformer_multi_linear:
-            depformer_input = self.depformer_in[depformer_cb_index](depformer_input)
+            depformer_input = _lin(self.depformer_in[depformer_cb_index], depformer_input)
         else:
-            depformer_input = self.depformer_in[0](depformer_input)
+            depformer_input = _lin(self.depformer_in[0], depformer_input)
         if depformer_cb_index == 0:
             last_token_input = self.depformer_text_emb(sequence[:, 0])
         else:
@@ -487,7 +492,7 @@ class LMModel(StreamingContainer):
         # depformer_input is [B, 1, depformer_dim].
         # The streaming state of the depformer ensures that the proper layer is run.
         dep_output = self.depformer(depformer_input)
-        logits = self.linears[depformer_cb_index](dep_output)
+        logits = _lin(self.linears[depformer_cb_index], dep_output)
         logits = logits[:, None]
         assert logits.dim() == 4, logits.shape  # [B, Ka, S, card]
         return logits

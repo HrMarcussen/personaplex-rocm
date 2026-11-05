@@ -27,6 +27,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+from ..kernels import fast_linear
 from ..utils.compile import torch_compile_lazy
 
 
@@ -34,11 +35,11 @@ from ..utils.compile import torch_compile_lazy
 def gating_forward_kernel(
     weight_in: torch.Tensor, weight_out: torch.Tensor, activation, x: torch.Tensor
 ):
-    x = F.linear(x, weight_in)
+    x = fast_linear(x, weight_in)
     B, T, _ = x.shape
     x = x.view(B, T, 2, -1)
     x = activation(x[..., 0, :]) * x[..., 1, :]
-    x = F.linear(x, weight_out)
+    x = fast_linear(x, weight_out)
     return x
 
 

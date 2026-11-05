@@ -31,6 +31,7 @@ See `StreamingTransformer` for more information.
 """
 
 from contextlib import ExitStack
+import math
 from dataclasses import dataclass
 import typing as tp
 
@@ -39,6 +40,8 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+from .. import kernels as _kernels
+from ..kernels import fast_linear
 from ..utils.compile import no_compile
 from .gating import make_gating
 from .rope import RotaryEmbedding
@@ -83,6 +86,8 @@ class RMSNorm(nn.Module):
         )
 
     def forward(self, x: torch.Tensor):
+        if _kernels.rms_norm_supported(x, self.alpha):
+            return _kernels.rms_norm(x, self.alpha, self.eps)
         return _rms_norm(x, self.alpha, self.dtype, self.eps)
 
 
@@ -194,7 +199,7 @@ def multi_linear(
     chout, chin = weight.shape
     weight = weight.view(num_linear, -1, chin)
     for t in range(T):
-        y = F.linear(x[:, t], weight[t + offset])
+        y = fast_linear(x[:, t], weight[t + offset])
         ys.append(y)
     out = torch.stack(ys, 1)
     return out
@@ -390,6 +395,18 @@ class StreamingMultiheadAttention(StreamingModule[_MHAState]):
             offset_cpu=0,
         )
 
+    def _get_rope_freqs(self, device: torch.device) -> tp.Optional[torch.Tensor]:
+        """RoPE frequencies exactly as computed by `apply_rope` (cached)."""
+        if self.rope is None:
+            return None
+        freqs = getattr(self, "_rope_freqs_cache", None)
+        if freqs is None or freqs.device != device:
+            D = self.embed_dim // self.num_heads
+            ds = torch.arange(D // 2, device=device, dtype=torch.float32)
+            freqs = torch.exp(ds * (-math.log(self.rope.max_period) * 2 / D))
+            self._rope_freqs_cache = freqs
+        return freqs
+
     def _complete_kv(self, k, v) -> KVCacheResult:
         state = self._streaming_state
         if state is None:
@@ -414,7 +431,25 @@ class StreamingMultiheadAttention(StreamingModule[_MHAState]):
                 self.weights_per_step, self.in_proj_weight, query, offset_cpu
             )
         else:
-            projected = nn.functional.linear(query, self.in_proj_weight)
+            projected = fast_linear(query, self.in_proj_weight)
+
+        if (
+            state is not None
+            and T == 1
+            and _kernels.attention_step_supported(
+                projected, state.kv_cache.cache, self.embed_dim // self.num_heads)
+        ):
+            # Fused RoPE + ring KV-cache write + decode attention (AMD HIP kernels).
+            x = _kernels.attention_step(
+                projected, state.kv_cache.cache, state.kv_cache.end_offset, offset,
+                self._get_rope_freqs(projected.device), self.context)
+            if self.weights_per_step:
+                x = multi_linear(self.weights_per_step, self.out_proj.weight, x, offset_cpu)
+            else:
+                x = fast_linear(x, self.out_proj.weight, self.out_proj.bias)
+            state.offset.add_(T)
+            state.offset_cpu += T
+            return x
         q, k, v = rearrange(
             projected, "b t (p h d) -> p b h t d", p=3, h=self.num_heads
         )
@@ -440,7 +475,7 @@ class StreamingMultiheadAttention(StreamingModule[_MHAState]):
         if self.weights_per_step:
             x = multi_linear(self.weights_per_step, self.out_proj.weight, x, offset_cpu)
         else:
-            x = self.out_proj(x)
+            x = fast_linear(x, self.out_proj.weight, self.out_proj.bias)
         if state is not None:
             state.offset.add_(T)
             state.offset_cpu += T
