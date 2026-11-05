@@ -434,6 +434,21 @@ def _int8_linear(x: torch.Tensor, q: torch.Tensor, scale: torch.Tensor,
 
 
 @torch.no_grad()
+def quantize_tensor_int8(w: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Symmetric per-row absmax int8 quantization: w ~= q * scale[:, None]."""
+    scale = (w.abs().amax(dim=1).float() / 127.0).clamp_min(1e-12)
+    q = torch.empty(w.shape, device=w.device, dtype=torch.int8)
+    for i in range(0, w.shape[0], 4096):  # chunked to bound temporary memory
+        q[i:i + 4096] = torch.round(w[i:i + 4096].float() / scale[i:i + 4096, None]).clamp_(-127, 127)
+    return q, scale
+
+
+def register_int8(p: torch.nn.Parameter, q: torch.Tensor, scale: torch.Tensor) -> None:
+    """Make `fast_linear(x, p)` use the int8 weight `q` with per-row `scale`."""
+    _QUANT[id(p)] = (q, scale, p)
+
+
+@torch.no_grad()
 def quantize_int8_(params: list[torch.nn.Parameter]) -> int:
     """Replace 2D bf16 weights by int8 + per-row scale (symmetric absmax).
 
@@ -446,11 +461,8 @@ def quantize_int8_(params: list[torch.nn.Parameter]) -> int:
         w = p.data
         if w.dim() != 2 or w.shape[1] % 16 != 0 or id(p) in _QUANT:
             continue
-        scale = (w.abs().amax(dim=1).float() / 127.0).clamp_min(1e-12)
-        q = torch.empty(w.shape, device=w.device, dtype=torch.int8)
-        for i in range(0, w.shape[0], 4096):  # chunked to bound temporary memory
-            q[i:i + 4096] = torch.round(w[i:i + 4096].float() / scale[i:i + 4096, None]).clamp_(-127, 127)
-        _QUANT[id(p)] = (q, scale, p)
+        q, scale = quantize_tensor_int8(w)
+        register_int8(p, q, scale)
         saved += w.numel() * w.element_size() - q.numel() - scale.numel() * 4
         p.data = torch.empty(0, device=w.device, dtype=w.dtype)
     if saved:

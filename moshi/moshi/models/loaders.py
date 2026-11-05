@@ -210,6 +210,10 @@ def get_moshi_lm(
         dev = torch.device(device) if isinstance(device, str) else device
         if dev.type == "mps":
             state_dict = load_file(filename, device="cpu")
+        elif _int8_requested():
+            # Keep weights on CPU and quantize them one by one while moving them
+            # to the GPU, so the bf16 copy of the big matrices never sits in VRAM.
+            state_dict = load_file(filename, device="cpu")
         else:
             state_dict = load_file(filename, device=dev.type)
     else:
@@ -253,21 +257,63 @@ def get_moshi_lm(
 
     # Assign weights to target device
     dev = torch.device(device) if isinstance(device, str) else device
-    for key in state_dict:
-        state_dict[key] = state_dict[key].to(device=dev, dtype=dtype)
-    
+    quantized = {}
+    use_int8 = _int8_requested() and dev.type == "cuda" and _kernels_available()
+    for key in list(state_dict):
+        if use_int8 and _is_int8_key(key):
+            from .. import kernels
+
+            w = state_dict.pop(key).to(device=dev, dtype=dtype)
+            quantized[key] = kernels.quantize_tensor_int8(w)
+            del w
+        else:
+            state_dict[key] = state_dict[key].to(device=dev, dtype=dtype)
+
     model.load_state_dict(state_dict, strict=False, assign=True)
+    if quantized:
+        from .. import kernels
+
+        saved = 0
+        for key, (q, scale) in quantized.items():
+            mod_name, _, attr = key.rpartition(".")
+            mod = model.get_submodule(mod_name)
+            placeholder = torch.nn.Parameter(torch.empty(0, device=dev, dtype=dtype), requires_grad=False)
+            setattr(mod, attr, placeholder)
+            kernels.register_int8(placeholder, q, scale)
+            saved += q.numel() * (torch.finfo(dtype).bits // 8) - q.numel() - scale.numel() * 4
+        logger.info(f"int8 weight-only quantization (on load): saved {saved / 2**30:.1f} GiB of VRAM")
     model.eval()
     model = model.to(device=device, dtype=dtype)
-    _maybe_quantize(model)
+    if not quantized:
+        _maybe_quantize(model)
     return model
+
+
+def _int8_requested() -> bool:
+    import os
+
+    return os.environ.get("PERSONAPLEX_INT8", "0").lower() not in ("0", "", "false", "no", "off")
+
+
+def _kernels_available() -> bool:
+    from .. import kernels
+
+    return kernels.available()
+
+
+def _is_int8_key(key: str) -> bool:
+    """Weights quantized by PERSONAPLEX_INT8: the temporal transformer + text head."""
+    if key == "text_linear.weight":
+        return True
+    if not key.startswith("transformer.layers."):
+        return False
+    return key.endswith((".self_attn.in_proj_weight", ".self_attn.out_proj.weight",
+                         ".gating.linear_in.weight", ".gating.linear_out.weight"))
 
 
 def _maybe_quantize(model: LMModel) -> None:
     """Optional int8 weight-only quantization (PERSONAPLEX_INT8=1, AMD kernels)."""
-    import os
-
-    if os.environ.get("PERSONAPLEX_INT8", "0").lower() in ("0", "", "false", "no", "off"):
+    if not _int8_requested():
         return
     from .. import kernels
 
