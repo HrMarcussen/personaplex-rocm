@@ -31,7 +31,7 @@ from ..quantization import (
 )
 from ..modules.resample import ConvDownsample1d, ConvTrUpsample1d
 from ..modules.streaming import StreamingModule, State
-from ..utils.compile import no_compile, CUDAGraphed
+from ..utils.compile import no_compile, CUDAGraphed, StepGraph
 
 
 logger = logging.getLogger()
@@ -94,9 +94,14 @@ class CompressionModel(StreamingModule[State]):
 class _MimiState:
     graphed_tr_enc: CUDAGraphed | None
     graphed_tr_dec: CUDAGraphed | None
+    graphed_encode: StepGraph | None = None
+    graphed_decode: StepGraph | None = None
 
     def reset(self):
-        pass
+        # Conv states go back to None, so whole-step graphs must be re-captured.
+        for g in (self.graphed_encode, self.graphed_decode):
+            if g is not None:
+                g.reset()
 
 
 class MimiModel(CompressionModel[_MimiState]):
@@ -228,7 +233,12 @@ class MimiModel(CompressionModel[_MimiState]):
             graphed_tr_enc = CUDAGraphed(self.encoder_transformer, disable=disable)
         if self.decoder_transformer is not None:
             graphed_tr_dec = CUDAGraphed(self.decoder_transformer, disable=disable)
-        return _MimiState(graphed_tr_enc, graphed_tr_dec)
+        state = _MimiState(graphed_tr_enc, graphed_tr_dec)
+        # Whole streaming encode / decode steps in one graph each: the SEANet
+        # convs and the quantizer otherwise run eagerly as ~100 small kernels.
+        state.graphed_encode = StepGraph(self._encode_step, disable=disable)
+        state.graphed_decode = StepGraph(self._decode_step, disable=disable)
+        return state
 
     @property
     def channels(self) -> int:
@@ -375,6 +385,12 @@ class MimiModel(CompressionModel[_MimiState]):
             codes (torch.Tensor): an int tensor of shape [B, K, T]
                 with K the number of codebooks used and T the timestep.
         """
+        state = self._streaming_state
+        if state is not None and state.graphed_encode is not None:
+            return state.graphed_encode(x)
+        return self._encode_step(x)
+
+    def _encode_step(self, x: torch.Tensor) -> torch.Tensor:
         emb = self._encode_to_unquantized_latent(x)
         codes = self.quantizer.encode(emb)
         return codes
@@ -404,6 +420,12 @@ class MimiModel(CompressionModel[_MimiState]):
         Returns:
             out (torch.Tensor): Float tensor of shape [B, C, T], the reconstructed audio.
         """
+        state = self._streaming_state
+        if state is not None and state.graphed_decode is not None:
+            return state.graphed_decode(codes)
+        return self._decode_step(codes)
+
+    def _decode_step(self, codes: torch.Tensor) -> torch.Tensor:
         state = self._streaming_state
         emb = self.decode_latent(codes)
         emb = self._to_encoder_framerate(emb)

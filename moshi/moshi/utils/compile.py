@@ -306,3 +306,56 @@ def cuda_graph(func: tp.Callable, warmup_steps: int = 1):
     if not _is_cuda_graph_enabled():
         return func
     return CUDAGraphed(func, warmup_steps)
+
+
+class StepGraph:
+    """Graph-capture a single-tensor streaming step once its input shape is stable.
+
+    Runs `func` eagerly for `warmup` consecutive calls with the same input
+    shape/dtype (so lazily created streaming state reaches its steady-state
+    shapes), then captures it in a CUDA/HIP graph and replays it. Any shape
+    change, or `reset()` (called on `reset_streaming`), drops the graph and
+    goes back to eager warmup. Requires the wrapped step to update its
+    streaming state in place in steady state (see `_assign_state`).
+    Returns a fresh clone of the output on each call, so callers never alias
+    the graph's static output buffer.
+    """
+
+    def __init__(self, func: tp.Callable, warmup: int = 2, disable: bool = False):
+        self.func = func
+        self.warmup = warmup
+        self.disable = disable
+        self.reset()
+
+    def reset(self) -> None:
+        self._graph: cuda.CUDAGraph | None = None
+        self._key: tuple | None = None
+        self._count = 0
+        self._input: torch.Tensor | None = None
+        self._output: torch.Tensor | None = None
+
+    def __call__(self, x: torch.Tensor) -> torch.Tensor:
+        if self.disable or not _is_cuda_graph_enabled() or in_cuda_graph():
+            return self.func(x)
+        key = (tuple(x.shape), x.dtype, x.device)
+        if self._graph is not None:
+            if key == self._key:
+                assert self._input is not None and self._output is not None
+                self._input.copy_(x)
+                self._graph.replay()
+                return self._output.clone()
+            self.reset()
+        if key != self._key:
+            self._key = key
+            self._count = 0
+        self._count += 1
+        if self._count <= self.warmup:
+            return self.func(x)
+        self._input = x.clone()
+        graph = cuda.CUDAGraph()
+        with _set_in_cuda_graph():
+            with cuda.graph(graph):
+                self._output = self.func(self._input)
+        self._graph = graph
+        graph.replay()  # capture does not execute: run it for real once
+        return self._output.clone()

@@ -41,6 +41,7 @@ import math
 import json
 from typing import List, Union, Protocol, TypeVar, Generic, Any, Optional
 import torch
+import typing as tp
 from safetensors.torch import save_file, load_file
 
 
@@ -431,6 +432,26 @@ class StreamingContainer(StreamingModule[_NullState]):
         return _NullState()
 
 
+
+def _assign_state(state: tp.Any, name: str, value: torch.Tensor) -> None:
+    """Store a streaming-state tensor, in place when the shape is unchanged.
+
+    Same values as plain assignment, but in steady state the tensor keeps its
+    address, which makes whole streaming steps (e.g. Mimi encode/decode)
+    capturable in a CUDA/HIP graph.
+    """
+    cur = getattr(state, name)
+    if (
+        isinstance(cur, torch.Tensor)
+        and cur.shape == value.shape
+        and cur.dtype == value.dtype
+        and cur.device == value.device
+    ):
+        cur.copy_(value)
+    else:
+        setattr(state, name, value)
+
+
 @dataclass
 class _StreamingAddState:
     previous_x: torch.Tensor | None = None
@@ -456,8 +477,8 @@ class StreamingAdd(StreamingModule[_StreamingAddState]):
             if prev_y is not None:
                 y = torch.cat([prev_y, y], dim=-1)
             m_l = min(x.shape[-1], y.shape[-1])
-            self._streaming_state.previous_x = x[..., m_l:]
-            self._streaming_state.previous_y = y[..., m_l:]
+            _assign_state(self._streaming_state, "previous_x", x[..., m_l:])
+            _assign_state(self._streaming_state, "previous_y", y[..., m_l:])
             return x[..., :m_l] + y[..., :m_l]
 
 
@@ -499,7 +520,7 @@ class RawStreamingConv1d(torch.nn.Conv1d, StreamingModule[_StreamingConvState]):
             # We will compute `num_frames` outputs, and we are advancing by `stride`
             # for each of the frame, so we know the data before `stride * num_frames`
             # will never be used again.
-            self._streaming_state.previous = input[..., offset:]
+            _assign_state(self._streaming_state, "previous", input[..., offset:])
             if num_frames > 0:
                 input_length = (num_frames - 1) * stride + kernel
                 out = super().forward(input[..., :input_length])
@@ -566,7 +587,7 @@ class RawStreamingConvTranspose1d(
             invalid_steps = kernel - stride
             partial = out[..., OT - invalid_steps :]
             out = out[..., : OT - invalid_steps]
-            self._streaming_state.partial = partial
+            _assign_state(self._streaming_state, "partial", partial)
             return out
 
 
