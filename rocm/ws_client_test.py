@@ -101,6 +101,57 @@ async def main():
     print(f"drift over the session: {drift * 1000:+.0f} ms "
           f"({'keeps up with real time' if abs(drift) < 0.2 else 'FALLING BEHIND'})")
     print("model text:", "".join(text).strip())
+    report_turn_taking(pcm, out, recv_times, t0)
+
+
+def _frame_rms(x: np.ndarray) -> np.ndarray:
+    n = len(x) // FRAME
+    return np.sqrt((x[: n * FRAME].reshape(n, FRAME) ** 2).mean(axis=1) + 1e-12)
+
+
+def report_turn_taking(inp: np.ndarray, out: np.ndarray, recv_times, t0: float) -> None:
+    """Response latency in the spirit of NVIDIA's chart (FullDuplexBench style).
+
+    The server emits exactly one output frame per input frame, so input and
+    output share a frame timeline. For every point where the user stops
+    talking (>= 0.5 s of silence after speech), find the first frame where the
+    model's output becomes voiced. That is the model's own reaction time; the
+    pipeline delay measured on this PC (audio sent -> audio back) adds to it.
+    """
+    rin, rout = _frame_rms(inp), _frame_rms(out)
+    if len(rout) < 20:
+        print("turn-taking: not enough output to analyse")
+        return
+    thr_in = max(0.01, 0.1 * np.percentile(rin, 95))
+    thr_out = max(0.01, 0.1 * np.percentile(rout, 95))
+    vin, vout = rin > thr_in, rout > thr_out
+    gap = int(0.5 * 12.5)
+    lat = []
+    i = gap
+    while i < min(len(vin), len(vout)) - gap:
+        # user was talking in the previous frames and is silent for `gap` frames now
+        if vin[i - 1] and not vin[i:i + gap].any():
+            j = i
+            while j < len(vout) and not vout[j]:
+                j += 1
+            if j < len(vout) and j - i < 12.5 * 3:  # answered within 3 s
+                if not vout[max(0, i - 3):i].any():  # model was not already talking
+                    lat.append((j - i) * 0.08)
+            i += gap
+        else:
+            i += 1
+    # Pipeline delay: when output frame k arrived vs when input frame k was sent (t0 + k*80ms).
+    delays = [t - (t0 + n / SR) for t, n in recv_times]
+    pipe = float(np.median(delays)) if delays else float("nan")
+    if lat:
+        lat = np.array(lat)
+        print(f"turn-taking: {len(lat)} user turn ends; model starts speaking after "
+              f"median {np.median(lat):.2f}s (model timeline, 80 ms resolution)")
+        print(f"  + pipeline delay on this PC (median, audio sent -> audio back): {pipe * 1000:.0f} ms")
+        print(f"  => perceived response latency ~ {np.median(lat) + pipe:.2f}s "
+              f"(NVIDIA's chart: 0.17s smooth turn-taking)")
+    else:
+        print(f"turn-taking: no clean user-turn ends found; pipeline delay {pipe * 1000:.0f} ms")
 
 
 if __name__ == "__main__":
